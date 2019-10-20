@@ -430,7 +430,7 @@ class DLASeg(nn.Module):
         # 2D to 3D
         dim = x.dim()
         if dim == 4:
-            x = x.unsqueeze(4).expand(*(x.size() + (8,)))
+            x = x.unsqueeze(4).expand(*(x.size() + (5,)))
 
         x = self.base(x)
         x = self.dla_up(x)
