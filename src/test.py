@@ -76,6 +76,7 @@ def prefetch_test(opt):
       Bar.suffix = Bar.suffix + '|{} {tm.val:.3f}s ({tm.avg:.3f}s) '.format(
         t, tm = avg_time_stats[t])
     bar.next()
+
   bar.finish()
   dataset.run_eval(results, opt.save_dir)
 

@@ -30,11 +30,12 @@ def main(opt):
   
   print('Creating model...')
   model = create_model(opt.arch, opt.heads, opt.head_conv)
+  import IPython; IPython.embed()
   optimizer = torch.optim.Adam(model.parameters(), opt.lr)
   start_epoch = 0
   if opt.load_model != '':
     model, optimizer, start_epoch = load_model(
-      model, opt.load_model, optimizer, opt.resume, opt.lr, opt.lr_step, model_to3d=opt.model_to3d)
+      model, opt.load_model, optimizer, opt.resume, opt.lr, opt.lr_step)
 
   Trainer = train_factory[opt.task]
   trainer = Trainer(opt, model, optimizer)

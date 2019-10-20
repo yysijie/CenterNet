@@ -13,28 +13,6 @@ from utils.post_process import multi_pose_post_process
 from utils.oracle_utils import gen_oracle_map
 from .base_trainer import BaseTrainer
 
-
-
-
-class CritAuto(torch.nn.Module):
-  def __init__(self, crit):
-    super(CritAuto, self).__init__()
-    self.crit = crit
-
-  def forward(self, x, g, *args):
-    if x.dim() == 4:
-      return self.crit(x, g, *args)
-    elif x.dim() == 5:
-      loss = 0
-      for i in range(x.size(4)):
-        loss += self.crit(x[:, :, :, :, i], g, *args)
-      loss /= x.size(4)
-      return loss
-    else:
-      raise ValueError()
-
-
-
 class MultiPoseLoss(torch.nn.Module):
   def __init__(self, opt):
     super(MultiPoseLoss, self).__init__()
@@ -44,14 +22,6 @@ class MultiPoseLoss(torch.nn.Module):
                    torch.nn.L1Loss(reduction='sum')
     self.crit_reg = RegL1Loss() if opt.reg_loss == 'l1' else \
                     RegLoss() if opt.reg_loss == 'sl1' else None
-
-    # 3d compatibility
-    self.crit = CritAuto(self.crit)
-    self.crit_hm_hp = CritAuto(self.crit_hm_hp)
-    self.crit_kp = CritAuto(self.crit_kp)
-    self.crit_reg = CritAuto(self.crit_reg)
-
-
     self.opt = opt
 
   def forward(self, outputs, batch):
@@ -82,7 +52,7 @@ class MultiPoseLoss(torch.nn.Module):
           batch['hp_ind'].detach().cpu().numpy(), 
           opt.output_res, opt.output_res)).to(opt.device)
 
-      
+
       hm_loss += self.crit(output['hm'], batch['hm']) / opt.num_stacks
       if opt.dense_hp:
         mask_weight = batch['dense_hps_mask'].sum() + 1e-4

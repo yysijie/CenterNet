@@ -9,6 +9,8 @@ import os
 
 from .networks.msra_resnet import get_pose_net
 from .networks.dlav0 import get_pose_net as get_dlav0
+from .networks.pose_dla_dcn3d import get_pose_net as get_dla_dcn3d
+from .networks.pose_dla_dcn3d_i import get_pose_net as get_dla_dcn3d_i
 from .networks.pose_dla_dcn import get_pose_net as get_dla_dcn
 from .networks.resnet_dcn import get_pose_net as get_pose_net_dcn
 from .networks.large_hourglass import get_large_hourglass_net
@@ -17,6 +19,8 @@ _model_factory = {
   'res': get_pose_net, # default Resnet with deconv
   'dlav0': get_dlav0, # default DLAup
   'dla': get_dla_dcn,
+  'dla3d': get_dla_dcn3d,
+  'dla3di': get_dla_dcn3d_i,
   'resdcn': get_pose_net_dcn,
   'hourglass': get_large_hourglass_net,
 }
@@ -29,7 +33,7 @@ def create_model(arch, heads, head_conv):
   return model
 
 def load_model(model, model_path, optimizer=None, resume=False, 
-               lr=None, lr_step=None):
+               lr=None, lr_step=None, model_to3d= 'null'):
   start_epoch = 0
   checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
   print('loaded {}, epoch {}'.format(model_path, checkpoint['epoch']))
@@ -51,11 +55,47 @@ def load_model(model, model_path, optimizer=None, resume=False,
         'or set the correct --num_classes for your own dataset.'
   for k in state_dict:
     if k in model_state_dict:
-      if state_dict[k].shape != model_state_dict[k].shape:
-        print('Skip loading parameter {}, required shape{}, '\
-              'loaded shape{}. {}'.format(
-          k, model_state_dict[k].shape, state_dict[k].shape, msg))
-        state_dict[k] = model_state_dict[k]
+      input_shape = state_dict[k].shape
+      model_shape = model_state_dict[k].shape
+      if input_shape != model_shape:
+        # 2D to 3D (identity)
+        if len(input_shape)==4 and len(model_shape)==5 and input_shape[0:3] == model_shape[0:3]:
+          assert 'weight' in k
+
+          if model_to3d == 'identical':
+            state_dict[k] = state_dict[k].unsqueeze(4).repeat(1, 1, 1, 1, model_shape[4])
+            # is transpose conv
+            if 'ida_' in k and k[-11:-8] == 'up_':
+              state_dict[k] /= model_shape[4] * 2
+            else:
+              for i in range(model_shape[4]):
+                if i != model_shape[4]//2:
+                  state_dict[k][:,:,:,:,i] = 0
+            print('===> Miss 3D parameters {}, expand 2D parameters.'.format(k))
+
+
+          elif model_to3d == 'mean':
+            state_dict[k] = state_dict[k].unsqueeze(4).repeat(1, 1, 1, 1, model_shape[4])/model_shape[4]
+            # is transpose conv
+            if 'ida_' in k and k[-11:-8] == 'up_':
+              state_dict[k] *= 2
+            print('===> Miss 3D parameters {}, expand 2D parameters.'.format(k))
+
+          else:
+            raise ValueError('Parameter {} Shape Mismatched'.format(k))
+
+
+        # 2D to 3D 
+        # if len(input_shape)==4 and len(model_shape)==5 and input_shape[0:3] == model_shape[0:3]:
+        #   assert 'weight' in k
+        #   state_dict[k] = state_dict[k].unsqueeze(4).repeat(1, 1, 1, 1, model_shape[4])/model_shape[4]
+        #   print('===> Miss 3D parameters {}, expand 2D parameters.'.format(k))
+
+        else:
+          print('Skip loading parameter {}, required shape{}, '\
+                'loaded shape{}. {}'.format(
+            k, model_state_dict[k].shape, state_dict[k].shape, msg))
+          state_dict[k] = model_state_dict[k]
     else:
       print('Drop parameter {}.'.format(k) + msg)
   for k in model_state_dict:
@@ -63,6 +103,7 @@ def load_model(model, model_path, optimizer=None, resume=False,
       print('No param {}.'.format(k) + msg)
       state_dict[k] = model_state_dict[k]
   model.load_state_dict(state_dict, strict=False)
+  save_model('./tmp.pth', 0, model)
 
   # resume optimizer parameters
   if optimizer is not None and resume:

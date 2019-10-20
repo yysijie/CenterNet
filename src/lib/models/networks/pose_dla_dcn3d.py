@@ -18,139 +18,72 @@ from .DCNv2.dcn_v2 import DCN
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)
 
+
+def CONV(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True):
+    if isinstance(stride, int):
+        stride = (stride, stride, 1)
+    return nn.Conv3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
+
+def POOL(kernel_size, stride=None, **kwargs):
+    if isinstance(kernel_size, int) and isinstance(stride, int):
+        kernel_size = (kernel_size, kernel_size, 1)
+        stride = (stride, stride, 1)
+    return nn.MaxPool3d(kernel_size, stride=stride, **kwargs)
+
+def DCONV(in_channels, out_channels, kernel_size, stride=1, padding=0, **kwargs):
+    if isinstance(kernel_size, int):
+        kernel_size = (kernel_size, kernel_size, 3)
+    if isinstance(padding, int):
+        padding = (padding, padding, 1)
+    if isinstance(stride, int):
+        stride = (stride, stride, 1)
+    return nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, **kwargs)
 def get_model_url(data='imagenet', name='dla34', hash='ba72cf86'):
     return join('http://dl.yf.io/dla/models', data, '{}-{}.pth'.format(name, hash))
 
-
-def conv3x3(in_planes, out_planes, stride=1):
-    "3x3 convolution with padding"
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1, bias=False)
 
 
 class BasicBlock(nn.Module):
     def __init__(self, inplanes, planes, stride=1, dilation=1):
         super(BasicBlock, self).__init__()
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=3,
+        self.conv1 = CONV(inplanes, planes, kernel_size=3,
                                stride=stride, padding=dilation,
                                bias=False, dilation=dilation)
-        self.bn1 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
+        self.bn1 = nn.BatchNorm3d(planes, momentum=BN_MOMENTUM)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
+        self.conv2 = CONV(planes, planes, kernel_size=3,
                                stride=1, padding=dilation,
                                bias=False, dilation=dilation)
-        self.bn2 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
+        self.bn2 = nn.BatchNorm3d(planes, momentum=BN_MOMENTUM)
         self.stride = stride
 
     def forward(self, x, residual=None):
         if residual is None:
             residual = x
 
+        
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
 
         out = self.conv2(out)
         out = self.bn2(out)
-
+        
         out += residual
         out = self.relu(out)
 
         return out
 
 
-class Bottleneck(nn.Module):
-    expansion = 2
-
-    def __init__(self, inplanes, planes, stride=1, dilation=1):
-        super(Bottleneck, self).__init__()
-        expansion = Bottleneck.expansion
-        bottle_planes = planes // expansion
-        self.conv1 = nn.Conv2d(inplanes, bottle_planes,
-                               kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(bottle_planes, momentum=BN_MOMENTUM)
-        self.conv2 = nn.Conv2d(bottle_planes, bottle_planes, kernel_size=3,
-                               stride=stride, padding=dilation,
-                               bias=False, dilation=dilation)
-        self.bn2 = nn.BatchNorm2d(bottle_planes, momentum=BN_MOMENTUM)
-        self.conv3 = nn.Conv2d(bottle_planes, planes,
-                               kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
-        self.relu = nn.ReLU(inplace=True)
-        self.stride = stride
-
-    def forward(self, x, residual=None):
-        if residual is None:
-            residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
-
-        out = self.conv3(out)
-        out = self.bn3(out)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
-
-
-class BottleneckX(nn.Module):
-    expansion = 2
-    cardinality = 32
-
-    def __init__(self, inplanes, planes, stride=1, dilation=1):
-        super(BottleneckX, self).__init__()
-        cardinality = BottleneckX.cardinality
-        # dim = int(math.floor(planes * (BottleneckV5.expansion / 64.0)))
-        # bottle_planes = dim * cardinality
-        bottle_planes = planes * cardinality // 32
-        self.conv1 = nn.Conv2d(inplanes, bottle_planes,
-                               kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(bottle_planes, momentum=BN_MOMENTUM)
-        self.conv2 = nn.Conv2d(bottle_planes, bottle_planes, kernel_size=3,
-                               stride=stride, padding=dilation, bias=False,
-                               dilation=dilation, groups=cardinality)
-        self.bn2 = nn.BatchNorm2d(bottle_planes, momentum=BN_MOMENTUM)
-        self.conv3 = nn.Conv2d(bottle_planes, planes,
-                               kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
-        self.relu = nn.ReLU(inplace=True)
-        self.stride = stride
-
-    def forward(self, x, residual=None):
-        if residual is None:
-            residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
-
-        out = self.conv3(out)
-        out = self.bn3(out)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
 
 
 class Root(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, residual):
         super(Root, self).__init__()
-        self.conv = nn.Conv2d(
+        self.conv = CONV(
             in_channels, out_channels, 1,
             stride=1, bias=False, padding=(kernel_size - 1) // 2)
-        self.bn = nn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM)
+        self.bn = nn.BatchNorm3d(out_channels, momentum=BN_MOMENTUM)
         self.relu = nn.ReLU(inplace=True)
         self.residual = residual
 
@@ -197,12 +130,12 @@ class Tree(nn.Module):
         self.project = None
         self.levels = levels
         if stride > 1:
-            self.downsample = nn.MaxPool2d(stride, stride=stride)
+            self.downsample = POOL(kernel_size=stride, stride=stride)
         if in_channels != out_channels:
             self.project = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels,
+                CONV(in_channels, out_channels,
                           kernel_size=1, stride=1, bias=False),
-                nn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM)
+                nn.BatchNorm3d(out_channels, momentum=BN_MOMENTUM)
             )
 
     def forward(self, x, residual=None, children=None):
@@ -228,9 +161,9 @@ class DLA(nn.Module):
         self.channels = channels
         self.num_classes = num_classes
         self.base_layer = nn.Sequential(
-            nn.Conv2d(3, channels[0], kernel_size=7, stride=1,
-                      padding=3, bias=False),
-            nn.BatchNorm2d(channels[0], momentum=BN_MOMENTUM),
+            CONV(3, channels[0], kernel_size=(7, 7, 1), stride=1,
+                      padding=(3, 3, 0), bias=False),
+            nn.BatchNorm3d(channels[0], momentum=BN_MOMENTUM),
             nn.ReLU(inplace=True))
         self.level0 = self._make_conv_level(
             channels[0], channels[0], levels[0])
@@ -246,22 +179,14 @@ class DLA(nn.Module):
         self.level5 = Tree(levels[5], block, channels[4], channels[5], 2,
                            level_root=True, root_residual=residual_root)
 
-        # for m in self.modules():
-        #     if isinstance(m, nn.Conv2d):
-        #         n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-        #         m.weight.data.normal_(0, math.sqrt(2. / n))
-        #     elif isinstance(m, nn.BatchNorm2d):
-        #         m.weight.data.fill_(1)
-        #         m.bias.data.zero_()
-
     def _make_level(self, block, inplanes, planes, blocks, stride=1):
         downsample = None
         if stride != 1 or inplanes != planes:
             downsample = nn.Sequential(
-                nn.MaxPool2d(stride, stride=stride),
-                nn.Conv2d(inplanes, planes,
+                POOL(kernel_size=stride, stride=stride),
+                CONV(inplanes, planes,
                           kernel_size=1, stride=1, bias=False),
-                nn.BatchNorm2d(planes, momentum=BN_MOMENTUM),
+                nn.BatchNorm3d(planes, momentum=BN_MOMENTUM),
             )
 
         layers = []
@@ -274,11 +199,12 @@ class DLA(nn.Module):
     def _make_conv_level(self, inplanes, planes, convs, stride=1, dilation=1):
         modules = []
         for i in range(convs):
+            s = stride if i == 0 else 1
             modules.extend([
-                nn.Conv2d(inplanes, planes, kernel_size=3,
-                          stride=stride if i == 0 else 1,
+                CONV(inplanes, planes, kernel_size=3,
+                          stride=(s, s, 1),
                           padding=dilation, bias=False, dilation=dilation),
-                nn.BatchNorm2d(planes, momentum=BN_MOMENTUM),
+                nn.BatchNorm3d(planes, momentum=BN_MOMENTUM),
                 nn.ReLU(inplace=True)])
             inplanes = planes
         return nn.Sequential(*modules)
@@ -299,10 +225,10 @@ class DLA(nn.Module):
             model_url = get_model_url(data, name, hash)
             model_weights = model_zoo.load_url(model_url)
         num_classes = len(model_weights[list(model_weights.keys())[-1]])
-        self.fc = nn.Conv2d(
+        self.fc = CONV(
             self.channels[-1], num_classes,
             kernel_size=1, stride=1, padding=0, bias=True)
-        self.load_state_dict(model_weights)
+        # self.load_state_dict(model_weights)
         # self.fc = fc
 
 
@@ -328,7 +254,9 @@ def fill_fc_weights(layers):
         if isinstance(m, nn.Conv2d):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
-
+        if isinstance(m, nn.Conv3d):
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
 def fill_up_weights(up):
     w = up.weight.data
@@ -356,18 +284,46 @@ class DeformConv(nn.Module):
         x = self.actf(x)
         return x
 
+class DeformConv3D(nn.Module):
+    def __init__(self, chi, cho):
+        super(DeformConv3D, self).__init__()
+        self.actf = nn.Sequential(
+            nn.BatchNorm3d(cho, momentum=BN_MOMENTUM),
+            nn.ReLU(inplace=True)
+        )
+        self.conv = DCN(chi, cho, kernel_size=(3,3), stride=1, padding=1, dilation=1, deformable_groups=1)
 
-class IDAUp(nn.Module):
+    def forward(self, x):
+        x = self.to2d(x)
+        x = self.conv(x)
+        x = self.to3d(x)
+        x = self.actf(x)
+        return x
+
+    def to2d(self, x):
+        assert x.dim() == 5
+        n, c, h, w, t = x.size()
+        x = x.permute((0, 4, 1,2,3)).contiguous().view(n*t, c, h, w).contiguous()
+        self.t = t
+        return x
+
+    def to3d(self, x):
+        assert x.dim() == 4
+        nt, c, h, w = x.size()
+        x = x.view(-1, self.t, c, h, w).permute((0, 2, 3, 4, 1))
+        return x
+
+class IDAUp3D(nn.Module):
 
     def __init__(self, o, channels, up_f):
-        super(IDAUp, self).__init__()
+        super(IDAUp3D, self).__init__()
+        self.up_f = up_f
         for i in range(1, len(channels)):
             c = channels[i]
             f = int(up_f[i])  
-            proj = DeformConv(c, o)
-            node = DeformConv(o, o)
-     
-            up = nn.ConvTranspose2d(o, o, f * 2, stride=f, 
+            proj = DeformConv3D(c, o)
+            node = DeformConv3D(o, o)
+            up = DCONV(o, o, f * 2, stride=f, 
                                     padding=f // 2, output_padding=0,
                                     groups=o, bias=False)
             fill_up_weights(up)
@@ -400,7 +356,7 @@ class DLAUp(nn.Module):
         for i in range(len(channels) - 1):
             j = -i - 2
             setattr(self, 'ida_{}'.format(i),
-                    IDAUp(channels[j], in_channels[j:],
+                    IDAUp3D(channels[j], in_channels[j:],
                           scales[j:] // scales[j]))
             scales[j + 1:] = scales[j]
             in_channels[j + 1:] = [channels[j] for _ in channels[j + 1:]]
@@ -435,12 +391,13 @@ class DLASeg(nn.Module):
         self.base = globals()[base_name](pretrained=pretrained)
         channels = self.base.channels
         scales = [2 ** i for i in range(len(channels[self.first_level:]))]
+
         self.dla_up = DLAUp(self.first_level, channels[self.first_level:], scales)
 
         if out_channel == 0:
             out_channel = channels[self.first_level]
 
-        self.ida_up = IDAUp(out_channel, channels[self.first_level:self.last_level], 
+        self.ida_up = IDAUp3D(out_channel, channels[self.first_level:self.last_level], 
                             [2 ** i for i in range(self.last_level - self.first_level)])
         
         self.heads = heads
@@ -448,10 +405,10 @@ class DLASeg(nn.Module):
             classes = self.heads[head]
             if head_conv > 0:
               fc = nn.Sequential(
-                  nn.Conv2d(channels[self.first_level], head_conv,
+                  CONV(channels[self.first_level], head_conv,
                     kernel_size=3, padding=1, bias=True),
                   nn.ReLU(inplace=True),
-                  nn.Conv2d(head_conv, classes, 
+                  CONV(head_conv, classes, 
                     kernel_size=final_kernel, stride=1, 
                     padding=final_kernel // 2, bias=True))
               if 'hm' in head:
@@ -459,7 +416,7 @@ class DLASeg(nn.Module):
               else:
                 fill_fc_weights(fc)
             else:
-              fc = nn.Conv2d(channels[self.first_level], classes, 
+              fc = CONV(channels[self.first_level], classes, 
                   kernel_size=final_kernel, stride=1, 
                   padding=final_kernel // 2, bias=True)
               if 'hm' in head:
@@ -469,6 +426,12 @@ class DLASeg(nn.Module):
             self.__setattr__(head, fc)
 
     def forward(self, x):
+
+        # 2D to 3D
+        dim = x.dim()
+        if dim == 4:
+            x = x.unsqueeze(4).expand(*(x.size() + (8,)))
+
         x = self.base(x)
         x = self.dla_up(x)
 
@@ -477,10 +440,15 @@ class DLASeg(nn.Module):
         for i in range(self.last_level - self.first_level):
             y.append(x[i].clone())
         self.ida_up(y, 0, len(y))
+        out = y[-1]
 
         z = {}
         for head in self.heads:
-            z[head] = self.__getattr__(head)(y[-1])
+            res = self.__getattr__(head)(out)
+            # if dim == 4:
+            #     res = res.mean(4)
+            z[head] = res
+
         return [z]
     
 
@@ -491,5 +459,6 @@ def get_pose_net(num_layers, heads, head_conv=256, down_ratio=4):
                  final_kernel=1,
                  last_level=5,
                  head_conv=head_conv)
+
   return model
 
