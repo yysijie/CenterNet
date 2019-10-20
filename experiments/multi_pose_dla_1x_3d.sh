@@ -11,6 +11,6 @@ python main.py multi_pose --exp_id dla3d_i_1x --dataset coco_hp --batch_size 2 -
 # train 3d model from 2d official model
 python main.py multi_pose --exp_id dla3d_1x --arch dla3d_34 --dataset coco_hp \
  --lr 5e-4 --load_model ../models/multi_pose_dla_3x.pth  --num_workers 16 --model_to3d mean \
- --batch_size 16 --master_batch 2 --gpus 0,1,2,3,4,5,6,7 --num_epochs 20 --lr_step 5,15
+ --batch_size 39 --master_batch 4 --gpus 0,1,2,3,4,5,6,7 --num_epochs 20 --lr_step 5,15
 
 cd ..
